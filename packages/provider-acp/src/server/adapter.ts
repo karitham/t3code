@@ -640,6 +640,10 @@ export interface AcpAdapterV2Flavor {
   readonly isProviderWakeNotification?: (
     notification: EffectAcpSchema.SessionNotification,
   ) => boolean;
+  /** Notifications a provider does not want the editor to turn into work. */
+  readonly shouldIgnoreNotification?: (
+    notification: EffectAcpSchema.SessionNotification,
+  ) => boolean;
   readonly deferFinalizeForBackgroundWork?: AcpNegotiatedFlag;
   /**
    * Every model reply ends with `usage_update`, also the ones the agent starts with no prompt
@@ -5773,6 +5777,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         ) {
           const context = yield* Ref.get(activeTurn);
           const update = notification.update;
+          if (flavor.shouldIgnoreNotification?.(notification)) return;
           if (
             followsAgentWorkState &&
             flavor.extractSubagentSessionEvent !== undefined &&
@@ -6027,7 +6032,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const rootSessionId = yield* Ref.get(activeSessionId);
           if (notification.sessionId !== rootSessionId) {
             if (context.finalized) return;
-            if (flavor.extractSubagentUpdate === undefined) return;
+            if (
+              flavor.extractSubagentUpdate === undefined &&
+              flavor.extractSubagentSessionEvent === undefined
+            )
+              return;
             const subagent = context.subagentsBySessionId.get(notification.sessionId);
             if (
               update.sessionUpdate === "tool_call" ||

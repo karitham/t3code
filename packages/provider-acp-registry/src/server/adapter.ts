@@ -3,7 +3,10 @@ import {
   extractClaudeSubagentSessionEvent,
   isClaudeProvisionalSubagentTool,
 } from "./claudeAcp.ts";
-import { extractGenericSubagentSessionEvent } from "./genericAcp.ts";
+import {
+  extractGenericSubagentSessionEvent,
+  shouldIgnoreGenericNotification,
+} from "./genericAcp.ts";
 import {
   normalizeDevinSessionUpdate,
   normalizeDevinToolCall,
@@ -403,7 +406,11 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
   // consuming their frames here would swallow the child state they rely on.
   const effectiveFlavor: AcpAdapterV2Flavor =
     flavor.extractSubagentUpdate === undefined && flavor.extractSubagentSessionEvent === undefined
-      ? { ...flavor, extractSubagentSessionEvent: extractGenericSubagentSessionEvent }
+      ? {
+          ...flavor,
+          extractSubagentSessionEvent: extractGenericSubagentSessionEvent,
+          shouldIgnoreNotification: shouldIgnoreGenericNotification,
+        }
       : flavor;
   return yield* makeAcpAdapterV2({
     instanceId: options.instanceId,

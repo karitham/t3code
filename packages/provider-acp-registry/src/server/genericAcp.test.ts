@@ -1,7 +1,10 @@
 import type * as AcpSchema from "effect-acp/compat";
 import { describe, expect, it } from "vite-plus/test";
 
-import { extractGenericSubagentSessionEvent } from "./genericAcp.ts";
+import {
+  extractGenericSubagentSessionEvent,
+  shouldIgnoreGenericNotification,
+} from "./genericAcp.ts";
 
 const notification = (
   update: Record<string, unknown>,
@@ -53,6 +56,25 @@ describe("generic ACP v2 subagent updates", () => {
       status: "completed",
       result: null,
     });
+  });
+
+  it("ignores mail deliveries delivered as user messages", () => {
+    expect(
+      shouldIgnoreGenericNotification(
+        notification({
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "<mail>from child</mail>" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldIgnoreGenericNotification(
+        notification({
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "hello" },
+        }),
+      ),
+    ).toBe(false);
   });
 
   it("ignores updates that are not subagent announcements", () => {

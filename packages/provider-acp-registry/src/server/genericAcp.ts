@@ -84,3 +84,32 @@ export function extractGenericSubagentSessionEvent(
     result,
   };
 }
+
+/**
+ * Agents that deliver child replies as mail still stream those letters into
+ * the editor as user messages. They are not editor input and must not open a
+ * new turn; the child's own ACP frames carry the answer to its subagent view.
+ */
+export function shouldIgnoreGenericNotification(
+  notification: AcpSchema.SessionNotification,
+): boolean {
+  const update = notification.update as unknown as Record<string, unknown>;
+  if (update.sessionUpdate !== "user_message" && update.sessionUpdate !== "user_message_chunk")
+    return false;
+  const content = update.content;
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .map((block) =>
+              typeof block === "object" && block !== null && "text" in block
+                ? String((block as { text?: unknown }).text ?? "")
+                : "",
+            )
+            .join("\n")
+        : typeof content === "object" && content !== null && "text" in content
+          ? String((content as { text?: unknown }).text ?? "")
+          : "";
+  return text.includes("<mail");
+}
