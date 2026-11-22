@@ -1923,6 +1923,9 @@ interface AcpNativeChildSession {
   prompt: string;
   subagent: ActiveAcpSubagent | undefined;
   owner: ActiveAcpTurn | undefined;
+  // A generic v2 child is announced by the protocol itself. Its terminal
+  // state should settle the subagent item, not reopen the parent turn.
+  protocolAnnounced: boolean;
   readonly pending: Array<EffectAcpSchema.SessionNotification>;
 }
 
@@ -3944,6 +3947,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               prompt: "",
               subagent: undefined,
               owner: undefined,
+              protocolAnnounced: false,
               pending: [],
             };
             nativeChildren.set(sessionId, child);
@@ -4149,7 +4153,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             (acpSubagentStatusIsTerminal(subagent.task.status) && child.status === "running")
           ) {
             if (child.pending.length < 256) child.pending.push(notification);
-            if (subagent !== undefined) {
+            if (subagent !== undefined && !child.protocolAnnounced) {
               const root = yield* Ref.get(activeSessionId);
               if (root !== null) yield* offerContinuationRun(root);
             }
@@ -4190,6 +4194,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           if (event !== undefined) {
             if (yield* Ref.get(stoppedRunQuarantine)) return true;
             const child = nativeChild(event.childSessionId);
+            if (flavor.extractSubagentSessionEvent === undefined) child.protocolAnnounced = true;
             child.parentSessionId = event.parentSessionId ?? child.parentSessionId;
             if (event.type === "state") {
               yield* setNativeChildState(child, event.status, event.result);
@@ -4228,7 +4233,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 yield* publishNativeChildStatus(owner, owner.status);
               } else if (acpSubagentStatusIsTerminal(owner.subagent.task.status)) {
                 if (context !== null) yield* syncNativeChildren(context);
-                else if (root !== null) yield* offerContinuationRun(root);
+                else if (root !== null && !owner.protocolAnnounced)
+                  yield* offerContinuationRun(root);
               }
             }
             return true;
