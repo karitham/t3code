@@ -77,6 +77,19 @@ describe("generic ACP v2 subagent updates", () => {
     ).toBe(false);
   });
 
+  it("ignores root work-state snapshots so they do not reopen the parent", () => {
+    expect(
+      shouldIgnoreGenericNotification(
+        notification({
+          sessionUpdate: "state_update",
+          state: "running",
+          background: [{ type: "subagent", sessionId: "child-session" }],
+        }),
+        true,
+      ),
+    ).toBe(true);
+  });
+
   it("ignores updates that are not subagent announcements", () => {
     expect(
       extractGenericSubagentSessionEvent(

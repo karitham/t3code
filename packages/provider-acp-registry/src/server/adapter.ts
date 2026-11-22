@@ -223,6 +223,10 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     registryAgentId === "kimi-code" ||
     (options.settings.source === "local" &&
       /^kimi(\.exe|\.cmd)?$/i.test(options.settings.commandPath.split(/[\\/]/).pop() ?? ""));
+  const isAlbedo =
+    registryAgentId === "albedo" ||
+    (options.settings.source === "local" &&
+      /^albedo(\.exe|\.cmd)?$/i.test(options.settings.commandPath.split(/[\\/]/).pop() ?? ""));
   const isClaude =
     registryAgentId === "claude-acp" ||
     (options.settings.source === "local" &&
@@ -409,7 +413,8 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
       ? {
           ...flavor,
           extractSubagentSessionEvent: extractGenericSubagentSessionEvent,
-          shouldIgnoreNotification: shouldIgnoreGenericNotification,
+          shouldIgnoreNotification: (notification) =>
+            shouldIgnoreGenericNotification(notification, isAlbedo),
         }
       : flavor;
   return yield* makeAcpAdapterV2({

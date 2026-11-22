@@ -92,10 +92,16 @@ export function extractGenericSubagentSessionEvent(
  */
 export function shouldIgnoreGenericNotification(
   notification: AcpSchema.SessionNotification,
+  ignoreWorkState = false,
 ): boolean {
   const update = notification.update as unknown as Record<string, unknown>;
-  if (update.sessionUpdate !== "user_message" && update.sessionUpdate !== "user_message_chunk")
-    return false;
+  const original =
+    update.sessionUpdate === "_t3_unknown" ? update.originalSessionUpdate : update.sessionUpdate;
+  // Albedo's root state_update is a background snapshot, not new work: its
+  // prompt response settles the turn and its subagent_update frames announce
+  // children. Following the snapshot reopens the parent to clean up children.
+  if (ignoreWorkState && original === "state_update") return true;
+  if (original !== "user_message" && original !== "user_message_chunk") return false;
   const content = update.content;
   const text =
     typeof content === "string"
