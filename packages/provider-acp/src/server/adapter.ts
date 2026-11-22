@@ -5904,6 +5904,23 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 update.sessionUpdate === "user_message_chunk" ||
                 (update.sessionUpdate === "state_update" && update.state === "running"))
             ) {
+              // A background snapshot that only replays subagents we already
+              // announced is a state report, not new work for the parent.
+              const background = (update as { background?: unknown }).background;
+              if (
+                Array.isArray(background) &&
+                background.length > 0 &&
+                background.every(
+                  (ref) =>
+                    typeof ref === "object" &&
+                    ref !== null &&
+                    (ref as { type?: unknown }).type === "subagent" &&
+                    typeof (ref as { sessionId?: unknown }).sessionId === "string" &&
+                    nativeChildren.get((ref as { sessionId: string }).sessionId)
+                      ?.protocolAnnounced === true,
+                )
+              )
+                return;
               yield* Ref.update(wakeBuffer, (current) => [...current, notification]);
               yield* offerContinuationRun(notification.sessionId);
               return;
