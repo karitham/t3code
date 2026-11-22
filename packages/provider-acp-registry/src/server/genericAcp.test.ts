@@ -37,6 +37,24 @@ describe("generic ACP v2 subagent updates", () => {
     expect(event.title).toBeNull();
   });
 
+  it("reads a child's own state_update so the child can be terminalized", () => {
+    expect(
+      extractGenericSubagentSessionEvent(
+        notification(
+          { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn" },
+          "child-session",
+        ),
+      ),
+    ).toEqual({
+      type: "state",
+      childSessionId: "child-session",
+      parentSessionId: null,
+      title: undefined,
+      status: "completed",
+      result: null,
+    });
+  });
+
   it("ignores updates that are not subagent announcements", () => {
     expect(
       extractGenericSubagentSessionEvent(

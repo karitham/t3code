@@ -18,11 +18,38 @@ const decodeChildState = Schema.decodeUnknownOption(
   }),
 );
 
+const decodeRootState = Schema.decodeUnknownOption(
+  Schema.Struct({
+    state: Schema.String,
+    stopReason: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    error: Schema.optionalKey(Schema.NullOr(Schema.Struct({ message: Schema.String }))),
+  }),
+);
+
+const stateStatus = (state: {
+  readonly state: string;
+  readonly stopReason?: string | null;
+  readonly error?: { readonly message: string } | null;
+}) => {
+  const unfinishedMessage = acpUnfinishedStopMessage(state.stopReason);
+  return {
+    status:
+      state.state === "running" || state.state === "requires_action"
+        ? ("running" as const)
+        : state.stopReason === "error" || unfinishedMessage !== undefined
+          ? ("failed" as const)
+          : state.stopReason === "cancelled" || state.state === "unknown"
+            ? ("cancelled" as const)
+            : ("completed" as const),
+    result: state.error?.message ?? unfinishedMessage ?? null,
+  };
+};
+
 /**
- * ACP v2's standard `subagent_update` has no provider-specific tool shape. The
- * generic client keeps unknown updates under `_t3_unknown` with the original
- * name and raw frame intact, so this reads that frame without needing a new
- * provider flavor for every agent that follows the protocol.
+ * ACP v2 announces a child with `subagent_update` and then reports its phase on
+ * the child session with `state_update`. The generic client keeps unknown
+ * updates under `_t3_unknown` with the raw frame intact, so this reads both
+ * without requiring a provider-specific flavor for every ACP v2 agent.
  */
 export function extractGenericSubagentSessionEvent(
   notification: AcpSchema.SessionNotification,
@@ -30,24 +57,30 @@ export function extractGenericSubagentSessionEvent(
   const update = notification.update;
   const original =
     update.sessionUpdate === "_t3_unknown" ? update.originalSessionUpdate : update.sessionUpdate;
+  if (original === "state_update") {
+    const state = decodeRootState(update);
+    if (Option.isNone(state)) return;
+    const { status, result } = stateStatus(state.value);
+    return {
+      type: "state",
+      childSessionId: notification.sessionId,
+      parentSessionId: null,
+      title: undefined,
+      status,
+      result,
+    };
+  }
   if (original !== "subagent_update") return;
   const child = decodeChildState("raw" in update ? update.raw : update);
   if (Option.isNone(child)) return;
   const { sessionId, title, state } = child.value;
-  const unfinishedMessage = acpUnfinishedStopMessage(state.stopReason);
+  const { status, result } = stateStatus(state);
   return {
     type: "state",
     childSessionId: sessionId,
     parentSessionId: notification.sessionId,
     title: title ?? null,
-    status:
-      state.state === "running" || state.state === "requires_action"
-        ? "running"
-        : state.stopReason === "error" || unfinishedMessage !== undefined
-          ? "failed"
-          : state.stopReason === "cancelled" || state.state === "unknown"
-            ? "cancelled"
-            : "completed",
-    result: state.error?.message ?? unfinishedMessage ?? null,
+    status,
+    result,
   };
 }

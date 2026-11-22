@@ -4177,7 +4177,12 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           if (!followsAgentWorkState || flavor.extractSubagentSessionEvent === undefined)
             return false;
           const root = yield* Ref.get(activeSessionId);
-          const event = flavor.extractSubagentSessionEvent(notification);
+          // A child's phase arrives as a plain state_update on the child
+          // session. The root's own state_update is work-state, not a child.
+          const event =
+            notification.sessionId === root && notification.update.sessionUpdate === "state_update"
+              ? undefined
+              : flavor.extractSubagentSessionEvent(notification);
           if (event !== undefined) {
             if (yield* Ref.get(stoppedRunQuarantine)) return true;
             const child = nativeChild(event.childSessionId);
