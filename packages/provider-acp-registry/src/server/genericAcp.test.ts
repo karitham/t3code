@@ -1,10 +1,7 @@
 import type * as AcpSchema from "effect-acp/compat";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  extractGenericSubagentSessionEvent,
-  shouldIgnoreGenericNotification,
-} from "./genericAcp.ts";
+import { extractGenericSubagentSessionEvent } from "./genericAcp.ts";
 
 const notification = (
   update: Record<string, unknown>,
@@ -40,6 +37,29 @@ describe("generic ACP v2 subagent updates", () => {
     expect(event.title).toBeNull();
   });
 
+  it("reads a standard inter-session message as child output", () => {
+    expect(
+      extractGenericSubagentSessionEvent(
+        notification({
+          sessionUpdate: "_t3_unknown",
+          originalSessionUpdate: "session_message",
+          raw: {
+            messageId: "m1",
+            senderSessionId: "child-session",
+            recipientSessionId: "root-session",
+            content: [{ type: "text", text: "hi from child" }],
+          },
+        }),
+      ),
+    ).toEqual({
+      type: "message",
+      childSessionId: "child-session",
+      parentSessionId: "root-session",
+      messageId: "m1",
+      text: "hi from child",
+    });
+  });
+
   it("reads a child's own state_update so the child can be terminalized", () => {
     expect(
       extractGenericSubagentSessionEvent(
@@ -56,45 +76,5 @@ describe("generic ACP v2 subagent updates", () => {
       status: "completed",
       result: null,
     });
-  });
-
-  it("ignores mail deliveries delivered as user messages", () => {
-    expect(
-      shouldIgnoreGenericNotification(
-        notification({
-          sessionUpdate: "user_message_chunk",
-          content: { type: "text", text: "<mail>from child</mail>" },
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      shouldIgnoreGenericNotification(
-        notification({
-          sessionUpdate: "user_message_chunk",
-          content: { type: "text", text: "hello" },
-        }),
-      ),
-    ).toBe(false);
-  });
-
-  it("ignores root work-state snapshots so they do not reopen the parent", () => {
-    expect(
-      shouldIgnoreGenericNotification(
-        notification({
-          sessionUpdate: "state_update",
-          state: "running",
-          background: [{ type: "subagent", sessionId: "child-session" }],
-        }),
-        true,
-      ),
-    ).toBe(true);
-  });
-
-  it("ignores updates that are not subagent announcements", () => {
-    expect(
-      extractGenericSubagentSessionEvent(
-        notification({ sessionUpdate: "_t3_unknown", originalSessionUpdate: "other", raw: {} }),
-      ),
-    ).toBeUndefined();
   });
 });

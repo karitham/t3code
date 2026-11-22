@@ -18,6 +18,17 @@ const decodeChildState = Schema.decodeUnknownOption(
   }),
 );
 
+const decodeSessionMessage = Schema.decodeUnknownOption(
+  Schema.Struct({
+    messageId: Schema.String,
+    senderSessionId: Schema.String,
+    recipientSessionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    content: Schema.Array(
+      Schema.Struct({ type: Schema.String, text: Schema.optionalKey(Schema.String) }),
+    ),
+  }),
+);
+
 const decodeRootState = Schema.decodeUnknownOption(
   Schema.Struct({
     state: Schema.String,
@@ -70,6 +81,20 @@ export function extractGenericSubagentSessionEvent(
       result,
     };
   }
+  if (original === "session_message") {
+    const message = decodeSessionMessage("raw" in update ? update.raw : update);
+    if (Option.isNone(message)) return;
+    const text = message.value.content
+      .flatMap((block) => (block.type === "text" && block.text !== undefined ? [block.text] : []))
+      .join("\n");
+    return {
+      type: "message",
+      childSessionId: message.value.senderSessionId,
+      parentSessionId: message.value.recipientSessionId ?? null,
+      messageId: message.value.messageId,
+      text,
+    };
+  }
   if (original !== "subagent_update") return;
   const child = decodeChildState("raw" in update ? update.raw : update);
   if (Option.isNone(child)) return;
@@ -83,39 +108,4 @@ export function extractGenericSubagentSessionEvent(
     status,
     result,
   };
-}
-
-/**
- * Agents that deliver child replies as mail still stream those letters into
- * the editor as user messages. They are not editor input and must not open a
- * new turn; the child's own ACP frames carry the answer to its subagent view.
- */
-export function shouldIgnoreGenericNotification(
-  notification: AcpSchema.SessionNotification,
-  ignoreWorkState = false,
-): boolean {
-  const update = notification.update as unknown as Record<string, unknown>;
-  const original =
-    update.sessionUpdate === "_t3_unknown" ? update.originalSessionUpdate : update.sessionUpdate;
-  // Albedo's root state_update is a background snapshot, not new work: its
-  // prompt response settles the turn and its subagent_update frames announce
-  // children. Following the snapshot reopens the parent to clean up children.
-  if (ignoreWorkState && original === "state_update") return true;
-  if (original !== "user_message" && original !== "user_message_chunk") return false;
-  const content = update.content;
-  const text =
-    typeof content === "string"
-      ? content
-      : Array.isArray(content)
-        ? content
-            .map((block) =>
-              typeof block === "object" && block !== null && "text" in block
-                ? String((block as { text?: unknown }).text ?? "")
-                : "",
-            )
-            .join("\n")
-        : typeof content === "object" && content !== null && "text" in content
-          ? String((content as { text?: unknown }).text ?? "")
-          : "";
-  return text.includes("<mail");
 }

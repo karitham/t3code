@@ -640,10 +640,6 @@ export interface AcpAdapterV2Flavor {
   readonly isProviderWakeNotification?: (
     notification: EffectAcpSchema.SessionNotification,
   ) => boolean;
-  /** Notifications a provider does not want the editor to turn into work. */
-  readonly shouldIgnoreNotification?: (
-    notification: EffectAcpSchema.SessionNotification,
-  ) => boolean;
   readonly deferFinalizeForBackgroundWork?: AcpNegotiatedFlag;
   /**
    * Every model reply ends with `usage_update`, also the ones the agent starts with no prompt
@@ -757,6 +753,13 @@ export type AcpSubagentSessionEvent =
       readonly parentSessionId: string | null;
       readonly delegationId: string;
       readonly prompt: string;
+    }
+  | {
+      readonly type: "message";
+      readonly childSessionId: string;
+      readonly parentSessionId: string | null;
+      readonly messageId: string;
+      readonly text: string;
     };
 
 export interface AcpAdapterV2SubagentUpdate {
@@ -4217,6 +4220,23 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   child.owner = context;
                 }
               }
+            } else if (event.type === "message") {
+              // A standard ACP v2 session_message carries the child's reply
+              // on the parent stream. Project it as the child's own output.
+              const messageOwner = nativeChildOwner(event.childSessionId);
+              if (messageOwner?.subagent !== undefined && messageOwner.owner !== undefined)
+                yield* projectSubagentNotification(
+                  messageOwner.subagent,
+                  {
+                    sessionId: event.childSessionId,
+                    update: {
+                      sessionUpdate: "agent_message_chunk",
+                      messageId: event.messageId,
+                      content: { type: "text", text: event.text },
+                    },
+                  } as EffectAcpSchema.SessionNotification,
+                  messageOwner.owner,
+                );
             } else {
               child.delegationId = event.delegationId;
               child.prompt = event.prompt;
@@ -5783,7 +5803,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         ) {
           const context = yield* Ref.get(activeTurn);
           const update = notification.update;
-          if (flavor.shouldIgnoreNotification?.(notification)) return;
           if (
             followsAgentWorkState &&
             flavor.extractSubagentSessionEvent !== undefined &&
