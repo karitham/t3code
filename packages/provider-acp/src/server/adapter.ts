@@ -743,6 +743,7 @@ export type AcpSubagentSessionEvent =
       readonly type: "state";
       readonly childSessionId: string;
       readonly parentSessionId: string;
+      readonly title?: string | null;
       readonly status: "running" | "completed" | "failed" | "cancelled";
       readonly result: string | null;
     }
@@ -4183,6 +4184,25 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             child.parentSessionId = event.parentSessionId ?? child.parentSessionId;
             if (event.type === "state") {
               yield* setNativeChildState(child, event.status, event.result);
+              // A protocol-level subagent announcement has no provider tool to
+              // create the task, so the first state frame creates it. Claude's
+              // flavor already has a delegation task and keeps its own path.
+              if (child.subagent === undefined && context !== null && event.title !== undefined) {
+                yield* emitSubagent(context, {
+                  nativeTaskId: event.childSessionId,
+                  childSessionId: event.childSessionId,
+                  prompt: "",
+                  title: event.title ?? event.childSessionId,
+                  model: null,
+                  status: event.status,
+                  result: event.result,
+                });
+                const created = context.subagentsBySessionId.get(event.childSessionId);
+                if (created !== undefined) {
+                  child.subagent = created;
+                  child.owner = context;
+                }
+              }
             } else {
               child.delegationId = event.delegationId;
               child.prompt = event.prompt;

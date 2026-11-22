@@ -3123,6 +3123,37 @@ describe("AcpRegistryAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.effect("surfaces a standard ACP v2 child announcement for a generic registry agent", () =>
+    Effect.gen(function* () {
+      const { update } = claudeFrames;
+      const session = yield* openClaudeReplaySession(
+        [
+          ...claudeFrames.open,
+          ...claudeFrames.prompt(1),
+          update(CLAUDE_ROOT_SESSION, {
+            sessionUpdate: "subagent_update",
+            sessionId: "child-1",
+            title: "Generic child",
+            state: { state: "running" },
+          }),
+          claudeMarker("child running"),
+          claudeFrames.idle("end_turn"),
+          claudeFrames.closeRequest,
+          claudeFrames.closed,
+        ],
+        undefined,
+        true,
+        "fixture-agent",
+      );
+      yield* session.runtime.startTurn(session.turnInput(1));
+      const events = yield* session.throughMarker("child running");
+      const child = events.find((event) => event.type === "subagent.updated");
+      if (child?.type !== "subagent.updated") throw new Error("Missing child");
+      assert.equal(child.subagent.status, "running");
+      assert.equal(child.subagent.title, "Generic child");
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.effect("keeps stopped child tools interrupted when a late output chunk arrives", () =>
     Effect.gen(function* () {
       const { update } = claudeFrames;

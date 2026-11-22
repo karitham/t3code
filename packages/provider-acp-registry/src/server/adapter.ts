@@ -3,6 +3,7 @@ import {
   extractClaudeSubagentSessionEvent,
   isClaudeProvisionalSubagentTool,
 } from "./claudeAcp.ts";
+import { extractGenericSubagentSessionEvent } from "./genericAcp.ts";
 import {
   normalizeDevinSessionUpdate,
   normalizeDevinToolCall,
@@ -397,9 +398,16 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
         }),
     ...(options.assertComplete === undefined ? {} : { assertComplete: options.assertComplete }),
   };
+  // ACP v2's standard child announcement is the fallback for agents that have
+  // no provider-specific subagent flavor. Flavored agents keep their own path:
+  // consuming their frames here would swallow the child state they rely on.
+  const effectiveFlavor: AcpAdapterV2Flavor =
+    flavor.extractSubagentUpdate === undefined && flavor.extractSubagentSessionEvent === undefined
+      ? { ...flavor, extractSubagentSessionEvent: extractGenericSubagentSessionEvent }
+      : flavor;
   return yield* makeAcpAdapterV2({
     instanceId: options.instanceId,
-    flavor,
+    flavor: effectiveFlavor,
     selfInvocation: options.selfInvocation,
     ...(options.continuationRequests === undefined
       ? {}
